@@ -2,6 +2,8 @@ import os
 import shutil
 
 def create_folders(args):
+    """Check if training and testing folder exists, add output folders if possible and not existing.
+       Otherwise, create the output folder."""
     output_folders = []
     for folder_path in [args.train_folder, args.test_folder]:
         if not os.path.exists(folder_path):

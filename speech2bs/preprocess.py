@@ -9,12 +9,18 @@ from transformers import WhisperProcessor, WhisperForConditionalGeneration
 import wandb
 
 def video2tensor(video_path, target_size=None):
+    """Convert a video file to a tensor of frames. 
+    Relies on openCV for reading video files.
+    Resizes to target_size if specified, otherwise keeps original size."""
+    
+    # Open video with OpenCV
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError("Could not open video file")
     
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
+    # Set up the tensor shape
     if target_size is not None:
         frames = np.zeros((total_frames, target_size, target_size, 3), dtype=np.uint8)
     else:
@@ -22,6 +28,7 @@ def video2tensor(video_path, target_size=None):
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frames = np.zeros((total_frames, height, width, 3), dtype=np.uint8)
     
+    # Load and resize
     for i in range(total_frames):
         ret, frame = cap.read()
         if not ret:
@@ -36,6 +43,11 @@ def video2tensor(video_path, target_size=None):
     return video_tensor
 
 def video2sound(video_path, audio_path, n_frames):
+    """Extract audio from a video file and convert it to a tensor.
+    Uses ffmpeg to extract audio and torchaudio to load it.
+    Resizes the audio to n_frames by reshaping the samples."""
+    
+    # Run ffmpeg to extract audio if it does not exist
     if(not os.path.exists(audio_path)):
         subprocess.run([
         'ffmpeg', '-y', '-i', video_path,
@@ -47,6 +59,7 @@ def video2sound(video_path, audio_path, n_frames):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE)
 
+    # Load audio with torchaudio, might be cached
     audio, _ = torchaudio.load(audio_path)
     audio = audio.mean(0)
     max_frames = audio.shape[0] // n_frames * n_frames
@@ -55,6 +68,14 @@ def video2sound(video_path, audio_path, n_frames):
     return  audio.reshape(n_frames, -1)
 
 def video2text(video_path, audio_path, text_path, target_size):
+    """Extract text from a video file using OpenAIs Whisper.
+    Transcribes the audio to text and returns a list of characters.
+    If the transcription is shorter than target_size, it extends the characters
+    by repeating characters and inserting spaces to fill the target size, 
+    thereby trying a uniform alinment.
+    """
+    
+    # Extend characters to target size as described above
     def extend_chars(chars, target_size):
         prev_len = len(chars)
         factor = target_size // prev_len
@@ -77,6 +98,7 @@ def video2text(video_path, audio_path, text_path, target_size):
 
         return extended_chars[:target_size]
 
+    # Check if audio and text files exist, otherwise extract them
     if(not os.path.exists(audio_path)):
         subprocess.run([
         'ffmpeg', '-y', '-i', video_path,
@@ -91,10 +113,12 @@ def video2text(video_path, audio_path, text_path, target_size):
         audio, _ = torchaudio.load(audio_path)
         audio = audio.mean(0)
 
+        # Load Whisper model and processor
         model_name = "openai/whisper-base"  # openai/whisper-large-v2"
         processor = WhisperProcessor.from_pretrained(model_name)
         model = WhisperForConditionalGeneration.from_pretrained(model_name)
 
+        # Apply Whisper in batches dues to max input length
         max_input_length = 25 * 16000  # 30 seconds of audio at 16kHz
         transcription = ""
         for start in range(0, len(audio), max_input_length):
@@ -109,6 +133,7 @@ def video2text(video_path, audio_path, text_path, target_size):
             text = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
             transcription += text + " "
         
+        # Write extracted transcription to text file for cacheing
         with open(text_path, "w", encoding="utf-8") as file:
             file.write(transcription)
     
@@ -116,6 +141,7 @@ def video2text(video_path, audio_path, text_path, target_size):
         with open(text_path, "r", encoding="utf-8") as file:
             transcription = file.read()
 
+    # Process transcription to characters
     chars = list(transcription.strip())
     if len(chars) >= target_size:
         return chars[:target_size], transcription
@@ -124,6 +150,8 @@ def video2text(video_path, audio_path, text_path, target_size):
 
 
 def csv2tensor(csv_path):
+    """Convert a CSV file with BS weights to a tensor.
+    Blendshapes follow ARKit standard."""
     weights = np.genfromtxt(csv_path, skip_header=2,
                             max_rows=52,  delimiter=",")[:, 1:]
 
@@ -133,15 +161,20 @@ def csv2tensor(csv_path):
     return torch.from_numpy(weights.T), weight_names
 
 def extract_tensors(mode, input_folder_path, output_folder_path, args):
+    """ Extracts all modalities and BS weights, logs shapes and transcriptions to wandb."""
+    
+    # Get BS weights and audio
     bs_weights, _ = csv2tensor(os.path.join(input_folder_path, "weights.csv"))
     audio = video2sound(os.path.join(input_folder_path, "video.mp4"), os.path.join(output_folder_path, "sound8.wav"), bs_weights.shape[0])
     max_frames = min(bs_weights.shape[0], audio.shape[0])
 
+    # Get video
     if args.include_video:
         video = video2tensor(os.path.join(input_folder_path, "video.mp4"), args.target_size)
         max_frames = min(max_frames, video.shape[0])
         video = video[:max_frames].contiguous()
     
+    # Get text
     if args.include_text:
         text, transcription = video2text(os.path.join(input_folder_path, "video.mp4"), 
                           os.path.join(output_folder_path, "sound16.wav"), 

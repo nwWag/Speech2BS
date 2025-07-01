@@ -4,8 +4,14 @@ import torch.nn.functional as F
 from transformers import GPT2Config, GPT2Model, VivitConfig, VivitModel
 
 class Speech2BsTrans(nn.Module):
+    """Overall model for Speech2Bs, including audio, video and text transformers. Seperate linear regressors for each modality."""
     def __init__(self, n_audio_features, n_output_features, args):
         super().__init__()
+        
+        # ===============================================================================
+        # Audio Transformer
+        # ===============================================================================
+        # Default gpt2 transformer and linear tokenzier for audio features
         config = GPT2Config(
             vocab_size=2,
             n_positions=args.window_size,
@@ -19,7 +25,11 @@ class Speech2BsTrans(nn.Module):
                                        nn.Sigmoid())
         self.audio_regressor = nn.Sequential(nn.Linear(self.audio_transformer.config.hidden_size, n_output_features),
                                        nn.Sigmoid())
-                                       
+       
+        # ===============================================================================
+        # Video Transformer
+        # ===============================================================================       
+        # Default vivit transformer and linear tokenzier for video features to match audio features                         
         self.video_transformer = None
         self.video_hidden_size = 0
         if args.include_video:
@@ -35,6 +45,10 @@ class Speech2BsTrans(nn.Module):
             self.video_regressor = nn.Sequential(nn.Linear(self.video_hidden_size, n_output_features),
                                         nn.Sigmoid())
 
+        # ===============================================================================
+        # Text Transformer
+        # ===============================================================================
+        # Default gpt2 transformer and one hot tokenzier for unicode characters
         self.text_transformer = None
         if args.include_text:
             config = GPT2Config(
@@ -52,6 +66,7 @@ class Speech2BsTrans(nn.Module):
                                         nn.Sigmoid())
             
     def forward(self, x, return_embeddings=False):
+        # Check input modalities
         if len(x) == 2:
             video = x[0]
             audio = x[1]
@@ -63,17 +78,20 @@ class Speech2BsTrans(nn.Module):
             audio = x
 
 
+        # Audio
         audio_embeds = self.tokenizer(audio)
         audio_embeds = self.audio_transformer(
             inputs_embeds=audio_embeds
         ).last_hidden_state.mean(dim=1)
         bs_audio = self.audio_regressor(audio_embeds)
 
+        # Video
         bs_video, video_embeds = None, None
         if self.video_transformer is not None:
             video_embeds = self.video_transformer(video).pooler_output
             bs_video = self.video_regressor(video_embeds)
 
+        # Text
         bs_text, text_embeds = None, None
         if self.text_transformer is not None:
             text_embeds = self.text_tokenizer(text)
@@ -85,7 +103,7 @@ class Speech2BsTrans(nn.Module):
             text_embeds = self.text_down_embed(text_embeds)
             bs_text = self.text_regressor(text_embeds)
 
-
+        # Return all modalities and set none if not present
         if not return_embeddings:
             return bs_audio, bs_video, bs_text
         else:

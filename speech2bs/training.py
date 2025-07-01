@@ -8,6 +8,7 @@ import wandb
 
 
 class NTXentLoss(nn.Module):
+    """Standard Contrastive loss for self-supervised learning,"""
     def __init__(self, temperature=0.5):
         super().__init__()
         self.temperature = temperature
@@ -25,6 +26,7 @@ class NTXentLoss(nn.Module):
 
     
 class Speech2BsTrainer(Trainer):
+    """Custom HF Trainer for Speech2Bs model, including contrastive loss and logging."""
     def __init__(self, contrastive, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.contrastive_loss = NTXentLoss(temperature=0.5) if contrastive else None
@@ -32,22 +34,25 @@ class Speech2BsTrainer(Trainer):
         self.logging_steps = kwargs["args"].logging_steps
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-
+        """Evaluate model, currently only if all modelitites are present."""
         if len(inputs) == 4:
             outputs_audio, outputs_video, outputs_text, \
                 audio_embeds, video_embeds, text_embeds = model(inputs[:3], return_embeddings=True)
 
+        # Reconstruction loss in BS space
         loss = F.mse_loss(outputs_audio, inputs[-1], reduction='mean')
         loss += F.mse_loss(outputs_video, inputs[-1], reduction='mean') if outputs_video is not None else 0
         loss += F.mse_loss(outputs_text, inputs[-1], reduction='mean') if outputs_text is not None else 0
         loss_dict = {"recon_loss": loss}
 
+        # Contrastive loss, only audio pairs
         if self.contrastive_loss is not None:
             contrastive_loss = self.contrastive_loss(audio_embeds, video_embeds) if outputs_video is not None else 0
             contrastive_loss += self.contrastive_loss(audio_embeds, text_embeds) if outputs_text is not None else 0
             loss_dict["contrastive_loss"] = contrastive_loss
             loss += contrastive_loss
 
+        # Log loss
         is_training = self.model.training
         if is_training:
             if self.trained_steps % self.logging_steps == (self.logging_steps - 1): 
