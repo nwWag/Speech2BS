@@ -56,7 +56,8 @@ class Speech2BsTrainer(Trainer):
         is_training = self.model.training
         if is_training:
             if self.trained_steps % self.logging_steps == (self.logging_steps - 1): 
-                wandb.log(loss_dict, step=self.trained_steps+1)
+                try: wandb.log(loss_dict, step=self.trained_steps+1)
+                except: pass
             self.trained_steps += 1
 
         return (loss, outputs) if return_outputs else loss

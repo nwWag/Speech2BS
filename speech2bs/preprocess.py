@@ -183,8 +183,9 @@ def extract_tensors(mode, input_folder_path, output_folder_path, args):
         text = torch.tensor([ord(c) for c in text], dtype=torch.int32).contiguous()
         trans_table = wandb.Table(columns=["transcription"])
         trans_table.add_data(transcription)
-        wandb.log({str(mode) + "_transcription": trans_table})
-
+        try: wandb.log({str(mode) + "_transcription": trans_table})
+        except: pass
+        
     bs_weights = bs_weights[:max_frames].contiguous()
     audio = audio[:max_frames].contiguous()
 
@@ -199,6 +200,6 @@ def extract_tensors(mode, input_folder_path, output_folder_path, args):
         shape_table.add_data("text", str(text.shape))
 
 
-    wandb.log({str(mode) + "_shapes": shape_table})
-
+    try: wandb.log({str(mode) + "_shapes": shape_table})
+    except: pass
     return bs_weights, audio, video if args.include_video else None, text if args.include_text else None

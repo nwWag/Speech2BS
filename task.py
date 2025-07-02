@@ -5,6 +5,7 @@ import wandb
 from huggingface_hub import login
 import datetime
 logging.basicConfig(level=logging.INFO)
+from accelerate import Accelerator
 
 import speech2bs.preprocess as preprocess
 import speech2bs.directories as directories
@@ -96,7 +97,9 @@ if(args.wandb_token): wandb.login(key=args.wandb_token)
 
 # W&B
 run_name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-wandb.init(project="speech2bs", config=args, name=run_name)
+accelerator = Accelerator()
+if accelerator.is_main_process:
+    wandb.init(project="speech2bs", config=args, name=run_name)
 
 
 # ===============================================================================
@@ -125,6 +128,7 @@ test_set = dataset.Speech2BSDataset(test_video, test_audio, test_text, test_bs_w
 sp2bs_model = model.Speech2BsTrans(n_audio_features=train_audio.shape[1],
                             n_output_features=train_bs_weights.shape[1],
                             args=args)
+#sp2bs_model.compile()
 
 # ===============================================================================
 # Training
