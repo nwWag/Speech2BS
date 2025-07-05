@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.ao.quantization as tq
 from transformers import GPT2Config, GPT2Model, VivitConfig, VivitModel
 
 class Speech2BsTrans(nn.Module):
@@ -108,3 +109,9 @@ class Speech2BsTrans(nn.Module):
             return bs_audio, bs_video, bs_text
         else:
             return bs_audio, bs_video, bs_text, audio_embeds, video_embeds, text_embeds
+
+
+def make_it_qat(module):
+    module.qconfig = tq.get_default_qat_qconfig('fbgemm')
+    tq.prepare_qat(module, inplace=True)
+    return module

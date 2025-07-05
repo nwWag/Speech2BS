@@ -7,9 +7,12 @@ Supports and creates a shared space of:
 - Text input
 
 ### Training
+#### Local Dockerfiler
 - Clone the repo.
 - Build and run the provided docker file; map the repo into the container under /app and your data under /data.
 - Also provide a wanbd token if desired.
+#### Cloud File
+- The copy variant.
 
 ### Data generation
 An iOS app is provided in the arkit directory, which is tested with iOS 18.5 and an iPhone 16 Pro Max.\

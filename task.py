@@ -128,7 +128,7 @@ test_set = dataset.Speech2BSDataset(test_video, test_audio, test_text, test_bs_w
 sp2bs_model = model.Speech2BsTrans(n_audio_features=train_audio.shape[1],
                             n_output_features=train_bs_weights.shape[1],
                             args=args)
-#sp2bs_model.compile()
+sp2bs_model = model.make_it_qat(sp2bs_model)
 
 # ===============================================================================
 # Training
